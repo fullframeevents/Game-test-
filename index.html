@@ -124,6 +124,7 @@
     position: absolute; inset: 0;
     border: 8px solid #ffffff; border-bottom: none; border-radius: 6px 6px 0 0;
     box-shadow: 0 0 0 1px rgba(0,0,0,.08);
+    pointer-events: none;   /* let taps pass through to the target zones below */
   }
   .goal-net {
     position: absolute; inset: 8px 8px 0 8px;
@@ -132,6 +133,7 @@
       linear-gradient(0deg,  rgba(255,255,255,.35) 1px, transparent 1px);
     background-size: 14px 14px;
     opacity: .55;
+    pointer-events: none;   /* decorative only */
   }
   /* target grid */
   .targets {
@@ -921,6 +923,21 @@ document.getElementById("playAgain").addEventListener("click", () => {
 /* ---------------- Shoot button ---------------- */
 els.shootBtn.addEventListener("click", () => {
   if (state.phase === "power") shoot();
+});
+
+// Forgiving aiming: a tap anywhere on the pitch selects the nearest goal zone.
+// (Direct taps on a zone still work; this is a fallback for taps that land
+//  outside the goal, e.g. on the grass — the second aimAt is a safe no-op.)
+els.pitch.addEventListener("click", (e) => {
+  if (state.phase !== "aim" || !ZONES.length) return;
+  let best = null, bestDist = Infinity;
+  ZONES.forEach(z => {
+    const r = z.el.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const d = (e.clientX - cx) ** 2 + (e.clientY - cy) ** 2;
+    if (d < bestDist) { bestDist = d; best = z.index; }
+  });
+  if (best !== null) aimAt(best);
 });
 
 /* ============================================================================

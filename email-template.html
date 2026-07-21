@@ -1,0 +1,58 @@
+<!--
+  Ready-to-paste EmailJS template for the Penalty Shootout game.
+  Paste this into the "Content" (HTML) box of your EmailJS template.
+  Set the template "To Email" field to {{to_email}} and the "From Name"
+  to your brand. Variables are filled automatically by the game.
+-->
+<div style="margin:0;padding:0;background:#f2f4f6;font-family:'Segoe UI',Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f2f4f6;padding:24px 0;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.06);">
+
+        <!-- Header -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#0a7d3c,#052e16);padding:28px 32px;text-align:center;">
+            <h1 style="margin:0;color:#ffffff;font-size:22px;letter-spacing:.5px;">{{brand_name}}</h1>
+            <p style="margin:6px 0 0;color:#ffd200;font-size:14px;font-weight:600;">Penalty Shootout Result</p>
+          </td>
+        </tr>
+
+        <!-- Score -->
+        <tr>
+          <td style="padding:32px;text-align:center;">
+            <p style="margin:0 0 6px;color:#444;font-size:16px;">Great effort, {{to_name}}! You scored</p>
+            <div style="font-size:56px;font-weight:800;color:#0a7d3c;line-height:1;">{{score}} / {{total}}</div>
+            <p style="margin:8px 0 0;color:#888;font-size:14px;">That's {{percent}}% &nbsp;•&nbsp; Shots: {{results}}</p>
+          </td>
+        </tr>
+
+        <!-- Promo -->
+        <tr>
+          <td style="padding:0 32px 8px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fff9e0;border:1px solid #ffe89e;border-radius:12px;">
+              <tr><td style="padding:20px 24px;text-align:center;">
+                <p style="margin:0 0 10px;color:#333;font-size:15px;line-height:1.5;">{{promo_text}}</p>
+                <div style="display:inline-block;padding:10px 20px;border:2px dashed #0a7d3c;border-radius:8px;font-size:20px;font-weight:800;letter-spacing:2px;color:#0a7d3c;">{{promo_code}}</div>
+              </td></tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- CTA -->
+        <tr>
+          <td style="padding:24px 32px;text-align:center;">
+            <a href="{{cta_url}}" style="display:inline-block;background:#ffd200;color:#0a0a0a;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:10px;font-size:16px;">{{cta_text}} →</a>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="padding:20px 32px;background:#0d2418;text-align:center;">
+            <p style="margin:0;color:rgba(255,255,255,.7);font-size:12px;">You received this because you played our penalty shootout on {{date}}.<br/>Marketing opt-in: {{opt_in}}</p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</div>

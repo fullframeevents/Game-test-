@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Penalty Shootout</title>
+<!--
+  ============================================================================
+  BRANDABLE PENALTY SHOOTOUT GAME
+  ============================================================================
+  A single-file, self-contained penalty shoot-out game for events, trade
+  shows and marketing activations.
+
+  HOW TO CUSTOMISE (two ways):
+    1. Easiest: open the game and click the gear (settings) icon top-right.
+       Change logos, colours, text and email settings live, then click
+       "Save & Apply". Use "Export config" to download your settings, or
+       "Download game" to get a fully-branded standalone HTML file.
+    2. For developers: edit the DEFAULT_CONFIG object below.
+
+  EMAILING SCORES:
+    Scores are emailed using EmailJS (https://www.emailjs.com) — a free,
+    no-backend service. Create an account, add an email service + template,
+    then paste your Service ID / Template ID / Public Key into the settings
+    panel (Email tab). See README.md for the exact template variables.
+    If EmailJS isn't configured, results are still captured locally and the
+    player is offered a "mailto" fallback.
+  ============================================================================
+-->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<style>
+  :root {
+    --primary:   #0a7d3c;
+    --secondary: #052e16;
+    --accent:    #ffd200;
+    --bg:        #06120b;
+    --surface:   #0d2418;
+    --text:      #ffffff;
+    --muted:     rgba(255,255,255,.6);
+    --danger:    #e11d48;
+    --radius: 16px;
+    --font: 'Segoe UI', system-ui, -apple-system, Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font);
+    color: var(--text);
+    background:
+      radial-gradient(1200px 800px at 50% -10%, rgba(255,255,255,.06), transparent 60%),
+      linear-gradient(160deg, var(--bg), #000 120%);
+    overflow: hidden;
+    -webkit-user-select: none; user-select: none;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #app {
+    width: 100%; max-width: 520px; height: 100dvh; max-height: 920px;
+    display: flex; flex-direction: column; position: relative;
+    background: linear-gradient(180deg, rgba(255,255,255,.02), transparent);
+  }
+
+  /* ---------- Header ---------- */
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px; z-index: 20;
+  }
+  header .logo { height: 40px; max-width: 150px; object-fit: contain; }
+  header .brand-fallback { font-weight: 800; font-size: 20px; letter-spacing: .5px; }
+  header .spacer { flex: 1; }
+  .icon-btn {
+    width: 40px; height: 40px; border-radius: 12px; border: 1px solid rgba(255,255,255,.15);
+    background: rgba(255,255,255,.06); color: var(--text); cursor: pointer;
+    display: grid; place-items: center; font-size: 18px; transition: .15s;
+  }
+  .icon-btn:hover { background: rgba(255,255,255,.14); }
+
+  /* ---------- Scoreboard ---------- */
+  .scoreboard {
+    display: flex; align-items: center; justify-content: center; gap: 18px;
+    padding: 6px 16px 12px;
+  }
+  .score-pill {
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
+    border-radius: 999px; padding: 8px 18px; text-align: center; min-width: 92px;
+  }
+  .score-pill .label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+  .score-pill .value { font-size: 28px; font-weight: 800; line-height: 1; color: var(--accent); }
+  .shots { display: flex; gap: 6px; justify-content: center; margin-top: 6px; flex-wrap: wrap; }
+  .shot-dot { width: 12px; height: 12px; border-radius: 50%; background: rgba(255,255,255,.18); }
+  .shot-dot.goal { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .shot-dot.miss { background: #ef4444; }
+
+  /* ---------- Pitch / Goal ---------- */
+  .pitch {
+    flex: 1; position: relative; margin: 4px 12px 0; border-radius: var(--radius) var(--radius) 0 0;
+    overflow: hidden; min-height: 300px;
+    background:
+      linear-gradient(180deg, #0b3d1f 0%, #0a4d27 40%, #0c5c2e 100%);
+  }
+  /* grass stripes */
+  .pitch::before {
+    content: ""; position: absolute; inset: 0;
+    background: repeating-linear-gradient(180deg, rgba(255,255,255,.035) 0 26px, transparent 26px 52px);
+  }
+  .goal {
+    position: absolute; top: 10%; left: 50%; transform: translateX(-50%);
+    width: 78%; aspect-ratio: 3 / 1.7;
+  }
+  .goal-frame {
+    position: absolute; inset: 0;
+    border: 8px solid #f4f6f8; border-bottom: none; border-radius: 6px 6px 0 0;
+    box-shadow: 0 0 0 1px rgba(0,0,0,.2);
+  }
+  .goal-net {
+    position: absolute; inset: 8px 8px 0 8px;
+    background-image:
+      linear-gradient(90deg, rgba(255,255,255,.25) 1px, transparent 1px),
+      linear-gradient(0deg,  rgba(255,255,255,.25) 1px, transparent 1px);
+    background-size: 14px 14px;
+    opacity: .5;
+  }
+  /* target grid */
+  .targets {
+    position: absolute; inset: 8px 8px 0 8px;
+    display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr);
+    gap: 4px;
+  }
+  .target {
+    border-radius: 8px; cursor: pointer; transition: .12s;
+    background: rgba(255,255,255,.03); border: 1.5px dashed rgba(255,255,255,.18);
+    display: grid; place-items: center;
+  }
+  .target:hover, .target.armed { background: rgba(255,210,0,.18); border-color: var(--accent); }
+  .target .ring { width: 34px; height: 34px; border-radius: 50%; border: 2.5px solid var(--accent);
+    opacity: 0; transform: scale(.6); transition: .12s; }
+  .target:hover .ring, .target.armed .ring { opacity: 1; transform: scale(1); }
+
+  .keeper {
+    position: absolute; z-index: 6; width: 74px; height: 88px; left: 50%; top: 42%;
+    transform: translate(-50%,0); transition: transform .35s cubic-bezier(.34,1.3,.7,1);
+    will-change: transform; pointer-events: none;
+  }
+  .ball {
+    position: absolute; z-index: 8; width: 42px; height: 42px; left: 50%; bottom: 12%;
+    transform: translate(-50%,0); pointer-events: none;
+    transition: none;
+    filter: drop-shadow(0 6px 6px rgba(0,0,0,.4));
+  }
+  .flash {
+    position: absolute; inset: 0; z-index: 9; display: grid; place-items: center;
+    pointer-events: none; opacity: 0;
+  }
+  .flash .txt {
+    font-size: 56px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase;
+    text-shadow: 0 4px 18px rgba(0,0,0,.6); transform: scale(.7);
+  }
+  .flash.show .txt { animation: pop 1s ease forwards; }
+  @keyframes pop {
+    0% { opacity: 0; transform: scale(.5) rotate(-6deg); }
+    25% { opacity: 1; transform: scale(1.1) rotate(2deg); }
+    70% { opacity: 1; transform: scale(1); }
+    100% { opacity: 0; transform: scale(1.05); }
+  }
+
+  /* ---------- Controls / bottom ---------- */
+  .controls {
+    background: var(--surface); padding: 14px 16px 20px; border-top: 1px solid rgba(255,255,255,.08);
+    border-radius: 0 0 var(--radius) var(--radius); margin: 0 12px 10px;
+  }
+  .hint { text-align: center; color: var(--muted); font-size: 14px; min-height: 20px; margin-bottom: 10px; }
+  .power-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .power-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); width: 46px; }
+  .power-track {
+    flex: 1; height: 16px; border-radius: 999px; background: rgba(255,255,255,.08);
+    overflow: hidden; position: relative; border: 1px solid rgba(255,255,255,.1);
+  }
+  .power-fill {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 0%;
+    background: linear-gradient(90deg, #22c55e, var(--accent) 60%, #ef4444);
+  }
+  .btn {
+    width: 100%; padding: 15px; border: none; border-radius: 12px; cursor: pointer;
+    font-size: 17px; font-weight: 800; letter-spacing: .5px; color: #0a0a0a;
+    background: var(--accent); transition: .15s; text-transform: uppercase;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+  .btn.secondary { background: rgba(255,255,255,.1); color: var(--text); border: 1px solid rgba(255,255,255,.18); }
+
+  /* ---------- Overlays ---------- */
+  .overlay {
+    position: absolute; inset: 0; z-index: 40; background: rgba(3,10,6,.9);
+    backdrop-filter: blur(6px); display: none; flex-direction: column;
+    padding: 24px; overflow-y: auto;
+  }
+  .overlay.show { display: flex; }
+  .overlay-card {
+    margin: auto; width: 100%; max-width: 420px;
+    background: var(--surface); border: 1px solid rgba(255,255,255,.12);
+    border-radius: 20px; padding: 26px; text-align: center;
+  }
+  .overlay h1 { font-size: 26px; margin-bottom: 6px; }
+  .overlay h2 { font-size: 20px; margin-bottom: 10px; }
+  .overlay p { color: var(--muted); margin-bottom: 16px; line-height: 1.5; font-size: 15px; }
+  .big-score { font-size: 64px; font-weight: 900; color: var(--accent); line-height: 1; margin: 8px 0 4px; }
+  .field { text-align: left; margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin-bottom: 6px; }
+  .field input, .field select, .field textarea {
+    width: 100%; padding: 12px 14px; border-radius: 10px; font-size: 15px;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.16); color: var(--text);
+    font-family: var(--font);
+  }
+  .field input::placeholder { color: rgba(255,255,255,.35); }
+  .field .check { display: flex; align-items: flex-start; gap: 8px; }
+  .field .check input { width: auto; margin-top: 3px; }
+  .field .check label { text-transform: none; letter-spacing: 0; font-size: 12px; color: var(--muted); margin: 0; }
+  .promo-box {
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    border: 1px solid rgba(255,255,255,.15); border-radius: 14px; padding: 18px; margin: 16px 0; text-align: center;
+  }
+  .promo-box .code {
+    display: inline-block; margin-top: 8px; padding: 8px 16px; border: 2px dashed var(--accent);
+    border-radius: 8px; font-size: 20px; font-weight: 800; letter-spacing: 2px; color: var(--accent);
+  }
+  .cta-link {
+    display: inline-block; margin-top: 12px; padding: 12px 20px; border-radius: 10px;
+    background: var(--accent); color: #0a0a0a; font-weight: 800; text-decoration: none;
+  }
+  .form-msg { font-size: 13px; min-height: 18px; margin-top: 4px; }
+  .form-msg.ok { color: #4ade80; }
+  .form-msg.err { color: #f87171; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+
+  /* ---------- Settings panel ---------- */
+  .tabs { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
+  .tab {
+    padding: 8px 14px; border-radius: 999px; font-size: 13px; cursor: pointer;
+    background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); color: var(--muted);
+  }
+  .tab.active { background: var(--accent); color: #0a0a0a; border-color: var(--accent); font-weight: 700; }
+  .tab-panel { display: none; text-align: left; }
+  .tab-panel.active { display: block; }
+  .color-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .color-row input[type=color] { width: 44px; height: 40px; padding: 0; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); background: none; }
+  .color-row .cname { flex: 1; font-size: 13px; }
+  .color-row .chex { width: 90px; font-size: 13px; text-transform: none; }
+  .settings-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+  .settings-actions .btn { flex: 1; min-width: 120px; font-size: 14px; padding: 12px; }
+  .logo-preview { max-height: 46px; max-width: 160px; margin: 8px 0; object-fit: contain; background: rgba(255,255,255,.05); border-radius: 8px; padding: 4px; }
+  .small { font-size: 12px; color: var(--muted); }
+  .muted-link { color: var(--accent); text-decoration: underline; cursor: pointer; }
+  .footer-brand { text-align: center; font-size: 11px; color: var(--muted); padding: 4px 0 10px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <img class="logo" id="brandLogo" alt="logo" style="display:none" />
+    <span class="brand-fallback" id="brandFallback"></span>
+    <span class="spacer"></span>
+    <button class="icon-btn" id="soundBtn" title="Sound">🔊</button>
+    <button class="icon-btn" id="settingsBtn" title="Customise">⚙️</button>
+  </header>
+
+  <div class="scoreboard">
+    <div class="score-pill">
+      <div class="label">Score</div>
+      <div class="value" id="scoreVal">0</div>
+    </div>
+    <div class="score-pill">
+      <div class="label" id="penLabel">Penalty</div>
+      <div class="value" id="penVal">1 / 5</div>
+    </div>
+  </div>
+  <div class="shots" id="shots"></div>
+
+  <div class="pitch" id="pitch">
+    <div class="goal">
+      <div class="goal-net"></div>
+      <div class="targets" id="targets"></div>
+      <div class="goal-frame"></div>
+    </div>
+    <!-- keeper -->
+    <svg class="keeper" id="keeper" viewBox="0 0 74 88">
+      <ellipse cx="37" cy="84" rx="26" ry="5" fill="rgba(0,0,0,.35)"/>
+      <rect x="20" y="30" width="34" height="34" rx="10" fill="var(--kit,#e11d48)"/>
+      <rect x="8"  y="32" width="16" height="9"  rx="4" fill="var(--kit,#e11d48)"/>
+      <rect x="50" y="32" width="16" height="9"  rx="4" fill="var(--kit,#e11d48)"/>
+      <circle cx="6"  cy="36" r="6" fill="#f1c27d"/>
+      <circle cx="68" cy="36" r="6" fill="#f1c27d"/>
+      <rect x="26" y="60" width="9" height="24" rx="4" fill="#111"/>
+      <rect x="39" y="60" width="9" height="24" rx="4" fill="#111"/>
+      <circle cx="37" cy="18" r="12" fill="#f1c27d"/>
+    </svg>
+    <!-- ball -->
+    <svg class="ball" id="ball" viewBox="0 0 42 42">
+      <circle cx="21" cy="21" r="20" fill="#fff" stroke="#ccc"/>
+      <polygon points="21,10 27,15 25,23 17,23 15,15" fill="#111"/>
+      <polygon points="21,3 26,7 21,10 16,7" fill="#333"/>
+      <polygon points="33,16 36,23 31,27 25,23 27,15" fill="#333"/>
+      <polygon points="9,16 15,15 17,23 11,27 6,23" fill="#333"/>
+    </svg>
+    <div class="flash" id="flash"><div class="txt" id="flashTxt"></div></div>
+  </div>
+
+  <div class="controls">
+    <div class="hint" id="hint">Tap where you want to shoot 👆</div>
+    <div class="power-wrap">
+      <span class="power-label">Power</span>
+      <div class="power-track"><div class="power-fill" id="powerFill"></div></div>
+    </div>
+    <button class="btn" id="shootBtn" disabled>Set Power</button>
+  </div>
+
+  <div class="footer-brand" id="footerBrand"></div>
+
+  <!-- ============ RESULT OVERLAY ============ -->
+  <div class="overlay" id="resultOverlay">
+    <div class="overlay-card">
+      <h1 id="resultTitle">Full Time!</h1>
+      <div class="big-score" id="finalScore">0 / 5</div>
+      <p id="resultSub">Great shooting!</p>
+
+      <div class="promo-box" id="promoBox">
+        <div id="promoText"></div>
+        <div class="code" id="promoCode" style="display:none"></div>
+      </div>
+
+      <form id="leadForm">
+        <div class="field">
+          <label>Your name</label>
+          <input type="text" id="playerName" placeholder="Jane Smith" required />
+        </div>
+        <div class="field">
+          <label>Email address</label>
+          <input type="email" id="playerEmail" placeholder="jane@email.com" required />
+        </div>
+        <div class="field" id="phoneField" style="display:none">
+          <label>Phone (optional)</label>
+          <input type="tel" id="playerPhone" placeholder="07…" />
+        </div>
+        <div class="field">
+          <div class="check">
+            <input type="checkbox" id="optIn" />
+            <label id="optInLabel"></label>
+          </div>
+        </div>
+        <button type="submit" class="btn" id="sendBtn">Email me my score 📧</button>
+        <div class="form-msg" id="formMsg"></div>
+      </form>
+
+      <a class="cta-link" id="ctaLink" target="_blank" rel="noopener" style="display:none"></a>
+      <div style="margin-top:14px">
+        <span class="muted-link" id="playAgain">Play again ↺</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SETTINGS OVERLAY ============ -->
+  <div class="overlay" id="settingsOverlay">
+    <div class="overlay-card" style="max-width:460px">
+      <h2>Customise your game</h2>
+      <div class="tabs">
+        <div class="tab active" data-tab="brand">Branding</div>
+        <div class="tab" data-tab="colors">Colours</div>
+        <div class="tab" data-tab="promo">Promo</div>
+        <div class="tab" data-tab="email">Email</div>
+        <div class="tab" data-tab="game">Game</div>
+      </div>
+
+      <!-- Brand -->
+      <div class="tab-panel active" data-panel="brand">
+        <div class="field">
+          <label>Company / brand name</label>
+          <input type="text" id="cfg_brandName" />
+        </div>
+        <div class="field">
+          <label>Logo image</label>
+          <img class="logo-preview" id="logoPreview" style="display:none" />
+          <input type="file" id="cfg_logoFile" accept="image/*" />
+          <div class="small">Or paste an image URL:</div>
+          <input type="text" id="cfg_logoUrl" placeholder="https://…/logo.png" style="margin-top:6px" />
+        </div>
+        <div class="field">
+          <label>Tagline (header/footer)</label>
+          <input type="text" id="cfg_tagline" />
+        </div>
+      </div>
+
+      <!-- Colours -->
+      <div class="tab-panel" data-panel="colors">
+        <div class="small" style="margin-bottom:10px">Pick a colour or type a hex code. Changes preview live.</div>
+        <div id="colorRows"></div>
+      </div>
+
+      <!-- Promo -->
+      <div class="tab-panel" data-panel="promo">
+        <div class="field">
+          <label>Prize / promo headline</label>
+          <input type="text" id="cfg_promoText" />
+        </div>
+        <div class="field">
+          <label>Discount / prize code (optional)</label>
+          <input type="text" id="cfg_promoCode" placeholder="GOAL10" />
+        </div>
+        <div class="field">
+          <label>Call-to-action button text</label>
+          <input type="text" id="cfg_ctaText" placeholder="Visit our website" />
+        </div>
+        <div class="field">
+          <label>Call-to-action link</label>
+          <input type="text" id="cfg_ctaUrl" placeholder="https://…" />
+        </div>
+        <div class="field">
+          <label>Marketing opt-in text</label>
+          <input type="text" id="cfg_optInText" />
+        </div>
+      </div>
+
+      <!-- Email -->
+      <div class="tab-panel" data-panel="email">
+        <div class="small" style="margin-bottom:10px">
+          Powered by <span class="muted-link" onclick="window.open('https://www.emailjs.com','_blank')">EmailJS</span>
+          (free, no server needed). Create an account, add a service &amp; template, then paste the IDs here.
+          See README for template variables.
+        </div>
+        <div class="field"><label>EmailJS Public Key</label><input type="text" id="cfg_ejsKey" placeholder="xxxxxxxxxxxx" /></div>
+        <div class="field"><label>Service ID</label><input type="text" id="cfg_ejsService" placeholder="service_xxxx" /></div>
+        <div class="field"><label>Template ID</label><input type="text" id="cfg_ejsTemplate" placeholder="template_xxxx" /></div>
+        <div class="field"><label>Notify address (BCC lead to you, optional)</label><input type="text" id="cfg_notifyEmail" placeholder="sales@company.com" /></div>
+      </div>
+
+      <!-- Game -->
+      <div class="tab-panel" data-panel="game">
+        <div class="field">
+          <label>Number of penalties</label>
+          <select id="cfg_numPens">
+            <option value="3">3</option><option value="5">5</option>
+            <option value="7">7</option><option value="10">10</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Keeper difficulty</label>
+          <select id="cfg_difficulty">
+            <option value="easy">Easy</option>
+            <option value="normal">Normal</option>
+            <option value="hard">Hard</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Ask for phone number?</label>
+          <select id="cfg_askPhone"><option value="no">No</option><option value="yes">Yes</option></select>
+        </div>
+      </div>
+
+      <div class="settings-actions">
+        <button class="btn" id="saveSettings">Save &amp; apply</button>
+        <button class="btn secondary" id="exportConfig">Export config</button>
+        <button class="btn secondary" id="downloadGame">Download game</button>
+        <button class="btn secondary" id="closeSettings">Close</button>
+      </div>
+      <div class="small" style="margin-top:10px">Settings are saved in this browser. Use "Export config" / "Download game" to keep them permanently.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================================
+   DEFAULT CONFIGURATION  — edit here, or use the in-game settings panel (⚙️)
+   ============================================================================ */
+const DEFAULT_CONFIG = {
+  brand: {
+    name: "Full Frame Events",
+    logoUrl: "",                       // paste a URL or upload in settings
+    tagline: "Powered by Full Frame Events"
+  },
+  colors: {
+    primary:   "#0a7d3c",
+    secondary: "#052e16",
+    accent:    "#ffd200",
+    bg:        "#06120b",
+    surface:   "#0d2418",
+    text:      "#ffffff",
+    keeperKit: "#e11d48"
+  },
+  game: {
+    numPenalties: 5,
+    difficulty: "normal",              // easy | normal | hard
+    askPhone: false
+  },
+  promo: {
+    promoText: "🎉 Thanks for playing! Show this screen at our stand for a free gift.",
+    promoCode: "",                     // e.g. GOAL10 — shown as a code if set
+    ctaText: "Visit our website",
+    ctaUrl: "",
+    optInText: "Yes, I'd like to receive news, offers and updates by email."
+  },
+  email: {
+    publicKey: "",                     // EmailJS public key
+    serviceId: "",                     // EmailJS service id
+    templateId: "",                    // EmailJS template id
+    notifyEmail: ""                    // optional internal notification address
+  }
+};
+
+/* ---------------- Config load / save ---------------- */
+const LS_KEY = "penaltyGameConfig";
+function deepMerge(base, over) {
+  const out = Array.isArray(base) ? [...base] : { ...base };
+  for (const k in over) {
+    if (over[k] && typeof over[k] === "object" && !Array.isArray(over[k]) && typeof base[k] === "object")
+      out[k] = deepMerge(base[k], over[k]);
+    else out[k] = over[k];
+  }
+  return out;
+}
+function loadConfig() {
+  let cfg = deepMerge({}, DEFAULT_CONFIG);
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_KEY) || "null");
+    if (saved) cfg = deepMerge(cfg, saved);
+  } catch (e) {}
+  return cfg;
+}
+let CONFIG = loadConfig();
+
+/* ---------------- Apply theme + branding ---------------- */
+function applyConfig() {
+  const c = CONFIG.colors;
+  const r = document.documentElement.style;
+  r.setProperty("--primary", c.primary);
+  r.setProperty("--secondary", c.secondary);
+  r.setProperty("--accent", c.accent);
+  r.setProperty("--bg", c.bg);
+  r.setProperty("--surface", c.surface);
+  r.setProperty("--text", c.text);
+  r.setProperty("--kit", c.keeperKit);
+
+  // brand
+  const logo = document.getElementById("brandLogo");
+  const fb = document.getElementById("brandFallback");
+  if (CONFIG.brand.logoUrl) {
+    logo.src = CONFIG.brand.logoUrl; logo.style.display = "block"; fb.style.display = "none";
+  } else {
+    logo.style.display = "none"; fb.style.display = "block"; fb.textContent = CONFIG.brand.name || "Penalty Shootout";
+  }
+  document.getElementById("footerBrand").textContent = CONFIG.brand.tagline || "";
+  document.title = (CONFIG.brand.name ? CONFIG.brand.name + " — " : "") + "Penalty Shootout";
+
+  // opt-in label
+  document.getElementById("optInLabel").textContent = CONFIG.promo.optInText;
+  // phone field
+  document.getElementById("phoneField").style.display = CONFIG.game.askPhone ? "block" : "none";
+  // penalty count label
+  document.getElementById("penVal").textContent = `1 / ${CONFIG.game.numPenalties}`;
+
+  // init emailjs
+  if (CONFIG.email.publicKey && window.emailjs) {
+    try { emailjs.init({ publicKey: CONFIG.email.publicKey }); } catch (e) {}
+  }
+}
+
+/* ============================================================================
+   GAME LOGIC
+   ============================================================================ */
+const state = {
+  score: 0, current: 0, total: CONFIG.game.numPenalties,
+  results: [], phase: "aim", // aim -> power -> shooting -> done
+  aimIndex: null, power: 0, powerDir: 1, sound: true
+};
+let powerTimer = null;
+
+const els = {
+  targets: document.getElementById("targets"),
+  keeper: document.getElementById("keeper"),
+  ball: document.getElementById("ball"),
+  flash: document.getElementById("flash"),
+  flashTxt: document.getElementById("flashTxt"),
+  hint: document.getElementById("hint"),
+  powerFill: document.getElementById("powerFill"),
+  shootBtn: document.getElementById("shootBtn"),
+  scoreVal: document.getElementById("scoreVal"),
+  penVal: document.getElementById("penVal"),
+  shots: document.getElementById("shots"),
+  pitch: document.getElementById("pitch")
+};
+
+// Build 6 target zones (3 cols x 2 rows)
+const ZONES = []; // {el, index, cx, cy}
+function buildTargets() {
+  els.targets.innerHTML = "";
+  ZONES.length = 0;
+  for (let i = 0; i < 6; i++) {
+    const t = document.createElement("div");
+    t.className = "target";
+    t.innerHTML = '<span class="ring"></span>';
+    t.addEventListener("click", () => aimAt(i));
+    els.targets.appendChild(t);
+    ZONES.push({ el: t, index: i });
+  }
+}
+
+function resetGame() {
+  state.total = CONFIG.game.numPenalties;
+  state.score = 0; state.current = 0; state.results = []; state.phase = "aim";
+  state.aimIndex = null; state.power = 0;
+  els.scoreVal.textContent = "0";
+  els.penVal.textContent = `1 / ${state.total}`;
+  renderShots();
+  buildTargets();
+  positionBall();
+  els.keeper.style.transform = "translate(-50%,0)";
+  setHint("Tap where you want to shoot 👆");
+  els.shootBtn.disabled = true;
+  els.shootBtn.textContent = "Set Power";
+  els.powerFill.style.width = "0%";
+}
+
+function renderShots() {
+  els.shots.innerHTML = "";
+  for (let i = 0; i < state.total; i++) {
+    const d = document.createElement("div");
+    d.className = "shot-dot";
+    if (state.results[i] === true) d.classList.add("goal");
+    else if (state.results[i] === false) d.classList.add("miss");
+    els.shots.appendChild(d);
+  }
+}
+
+function setHint(t) { els.hint.textContent = t; }
+
+function positionBall() {
+  els.ball.style.transition = "none";
+  els.ball.style.transform = "translate(-50%,0)";
+  els.ball.style.left = "50%";
+  els.ball.style.bottom = "12%";
+}
+
+function aimAt(i) {
+  if (state.phase !== "aim") return;
+  state.aimIndex = i;
+  state.phase = "power";
+  ZONES.forEach(z => z.el.classList.toggle("armed", z.index === i));
+  setHint("Now stop the power bar 💥");
+  els.shootBtn.disabled = false;
+  els.shootBtn.textContent = "Shoot!";
+  startPower();
+}
+
+function startPower() {
+  state.power = 0; state.powerDir = 1;
+  clearInterval(powerTimer);
+  powerTimer = setInterval(() => {
+    state.power += state.powerDir * 3.2;
+    if (state.power >= 100) { state.power = 100; state.powerDir = -1; }
+    if (state.power <= 0)   { state.power = 0;   state.powerDir = 1; }
+    els.powerFill.style.width = state.power + "%";
+  }, 16);
+}
+
+// difficulty -> keeper save probability + reach
+const DIFF = {
+  easy:   { guessRight: 0.28, adjacentSave: 0.10 },
+  normal: { guessRight: 0.42, adjacentSave: 0.16 },
+  hard:   { guessRight: 0.58, adjacentSave: 0.24 }
+};
+
+function shoot() {
+  if (state.phase !== "power") return;
+  clearInterval(powerTimer);
+  state.phase = "shooting";
+  els.shootBtn.disabled = true;
+
+  const target = ZONES[state.aimIndex];
+  const rect = target.el.getBoundingClientRect();
+  const pitchRect = els.pitch.getBoundingClientRect();
+
+  // Keeper decides where to dive
+  const diff = DIFF[CONFIG.game.difficulty] || DIFF.normal;
+  const col = state.aimIndex % 3;      // 0 left,1 centre,2 right
+  const rowTop = state.aimIndex < 3;
+  let keeperCol;
+  const guess = Math.random();
+  if (guess < diff.guessRight) keeperCol = col;                        // dives right way
+  else keeperCol = [0,1,2].filter(x => x !== col)[Math.floor(Math.random()*2)];
+
+  // power affects accuracy: too weak or too maxed can go off target
+  const power = state.power;
+  let onTarget = true;
+  let missReason = "";
+  if (power < 22) { onTarget = false; missReason = "weak"; }
+  else if (power > 97 && Math.random() < 0.5) { onTarget = false; missReason = "over"; }
+
+  // Move keeper
+  const dive = { 0: -1, 1: 0, 2: 1 }[keeperCol];
+  const keeperX = dive * 34; // percent-ish translate in px
+  const keeperY = rowTop ? -6 : 8;
+  els.keeper.style.transform =
+    `translate(calc(-50% + ${keeperX}px), ${keeperY}px) rotate(${dive*22}deg)`;
+
+  // Animate ball to target centre
+  const targetCX = rect.left - pitchRect.left + rect.width/2;
+  const targetCY = rect.top - pitchRect.top + rect.height/2;
+  const ballStartX = pitchRect.width/2;
+  const ballStartY = pitchRect.height * 0.88;
+  let dx = targetCX - ballStartX;
+  let dy = targetCY - ballStartY;
+  if (!onTarget) {
+    // steer it wide/over the bar
+    if (missReason === "over") dy -= pitchRect.height * 0.18;
+    else dx += (col === 0 ? -1 : 1) * pitchRect.width * 0.12;
+  }
+  const scale = 0.5 + (rowTop ? 0.05 : 0.12);
+
+  els.ball.style.transition = "transform .5s cubic-bezier(.4,.15,.3,1)";
+  requestAnimationFrame(() => {
+    els.ball.style.transform = `translate(calc(-50% + ${dx}px), ${dy}px) scale(${scale})`;
+  });
+
+  playKick();
+
+  setTimeout(() => {
+    // Determine goal / save
+    let goal;
+    if (!onTarget) goal = false;
+    else if (keeperCol === col) {
+      // keeper in right column; power helps beat them
+      const beat = Math.random() < (power/100) * 0.5; // strong shots can still score
+      goal = beat;
+    } else {
+      // adjacent save chance
+      const adjacent = Math.abs(keeperCol - col) === 1;
+      goal = !(adjacent && Math.random() < diff.adjacentSave);
+    }
+    recordResult(goal, onTarget, missReason);
+  }, 520);
+}
+
+function recordResult(goal, onTarget, reason) {
+  state.results[state.current] = goal;
+  if (goal) { state.score++; els.scoreVal.textContent = state.score; }
+  renderShots();
+
+  let txt = goal ? "GOAL!" : (!onTarget ? (reason==="over"?"OVER!":"WIDE!") : "SAVED!");
+  let color = goal ? "var(--accent)" : "#ef4444";
+  els.flashTxt.textContent = txt;
+  els.flashTxt.style.color = color;
+  els.flash.classList.remove("show"); void els.flash.offsetWidth; els.flash.classList.add("show");
+  if (goal) playCheer(); else playMiss();
+
+  state.current++;
+  setTimeout(() => {
+    if (state.current >= state.total) { endGame(); return; }
+    // next penalty
+    state.phase = "aim"; state.aimIndex = null;
+    ZONES.forEach(z => z.el.classList.remove("armed"));
+    els.penVal.textContent = `${state.current + 1} / ${state.total}`;
+    els.keeper.style.transform = "translate(-50%,0)";
+    positionBall();
+    els.powerFill.style.width = "0%";
+    els.shootBtn.disabled = true; els.shootBtn.textContent = "Set Power";
+    setHint("Tap where you want to shoot 👆");
+  }, 1100);
+}
+
+/* ============================================================================
+   END GAME + RESULT / EMAIL
+   ============================================================================ */
+function endGame() {
+  state.phase = "done";
+  const pct = state.score / state.total;
+  let title, sub;
+  if (pct === 1)      { title = "🏆 Perfect!"; sub = "You buried every single one. Legendary."; }
+  else if (pct >= .6) { title = "⚽ Great shooting!"; sub = "A top-class performance from the spot."; }
+  else if (pct >= .3) { title = "👏 Not bad!"; sub = "A few went in — keep practising!"; }
+  else                { title = "😅 Tough round!"; sub = "The keeper was on fire today. Try again?"; }
+
+  document.getElementById("resultTitle").textContent = title;
+  document.getElementById("resultSub").textContent = sub;
+  document.getElementById("finalScore").textContent = `${state.score} / ${state.total}`;
+
+  // promo
+  document.getElementById("promoText").textContent = CONFIG.promo.promoText || "";
+  const codeEl = document.getElementById("promoCode");
+  if (CONFIG.promo.promoCode) { codeEl.style.display = "inline-block"; codeEl.textContent = CONFIG.promo.promoCode; }
+  else codeEl.style.display = "none";
+  document.getElementById("promoBox").style.display =
+    (CONFIG.promo.promoText || CONFIG.promo.promoCode) ? "block" : "none";
+
+  // CTA
+  const cta = document.getElementById("ctaLink");
+  if (CONFIG.promo.ctaUrl) {
+    cta.style.display = "inline-block";
+    cta.textContent = CONFIG.promo.ctaText || "Learn more";
+    cta.href = CONFIG.promo.ctaUrl;
+  } else cta.style.display = "none";
+
+  document.getElementById("formMsg").textContent = "";
+  document.getElementById("formMsg").className = "form-msg";
+  document.getElementById("sendBtn").disabled = false;
+  document.getElementById("resultOverlay").classList.add("show");
+}
+
+document.getElementById("leadForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const name = document.getElementById("playerName").value.trim();
+  const email = document.getElementById("playerEmail").value.trim();
+  const phone = document.getElementById("playerPhone").value.trim();
+  const optIn = document.getElementById("optIn").checked;
+  const msg = document.getElementById("formMsg");
+  const btn = document.getElementById("sendBtn");
+
+  if (!name || !email) { msg.textContent = "Please enter your name and email."; msg.className = "form-msg err"; return; }
+
+  const lead = {
+    name, email, phone, optIn,
+    score: state.score, total: state.total,
+    percent: Math.round((state.score/state.total)*100),
+    results: state.results.map(r => r ? "⚽" : "✗").join(" "),
+    date: new Date().toLocaleString(),
+    brand: CONFIG.brand.name,
+    promoCode: CONFIG.promo.promoCode || "",
+    ctaUrl: CONFIG.promo.ctaUrl || ""
+  };
+  // always capture locally
+  saveLead(lead);
+
+  const em = CONFIG.email;
+  if (em.publicKey && em.serviceId && em.templateId && window.emailjs) {
+    btn.disabled = true; msg.textContent = "Sending…"; msg.className = "form-msg";
+    try {
+      await emailjs.send(em.serviceId, em.templateId, {
+        to_name: name,
+        to_email: email,
+        player_email: email,
+        phone: phone,
+        score: state.score,
+        total: state.total,
+        percent: lead.percent,
+        results: lead.results,
+        brand_name: CONFIG.brand.name,
+        promo_text: CONFIG.promo.promoText,
+        promo_code: CONFIG.promo.promoCode,
+        cta_text: CONFIG.promo.ctaText,
+        cta_url: CONFIG.promo.ctaUrl,
+        opt_in: optIn ? "Yes" : "No",
+        date: lead.date,
+        notify_email: em.notifyEmail || ""
+      });
+      msg.textContent = "✅ Sent! Check your inbox.";
+      msg.className = "form-msg ok";
+      btn.textContent = "Sent ✓";
+    } catch (err) {
+      console.error(err);
+      msg.innerHTML = 'Could not send automatically. ' +
+        '<span class="muted-link" id="mailtoLink">Email it yourself instead</span>.';
+      msg.className = "form-msg err";
+      btn.disabled = false;
+      wireMailto(lead);
+    }
+  } else {
+    // No EmailJS configured -> mailto fallback
+    msg.innerHTML = 'Result saved. <span class="muted-link" id="mailtoLink">Tap to email your score</span>.';
+    msg.className = "form-msg ok";
+    wireMailto(lead);
+  }
+});
+
+function wireMailto(lead) {
+  const link = document.getElementById("mailtoLink");
+  if (!link) return;
+  const subject = encodeURIComponent(`${lead.brand} Penalty Shootout — I scored ${lead.score}/${lead.total}!`);
+  const body = encodeURIComponent(
+    `Hi ${lead.name},\n\nYour penalty shootout result:\n` +
+    `Score: ${lead.score}/${lead.total} (${lead.percent}%)\n` +
+    `Shots: ${lead.results}\n\n` +
+    (lead.promoCode ? `Your code: ${lead.promoCode}\n` : "") +
+    (CONFIG.promo.promoText ? `\n${CONFIG.promo.promoText}\n` : "") +
+    (lead.ctaUrl ? `\n${CONFIG.promo.ctaText}: ${lead.ctaUrl}\n` : "") +
+    `\n${CONFIG.brand.tagline || ""}`
+  );
+  link.onclick = () => { window.location.href = `mailto:${lead.email}?subject=${subject}&body=${body}`; };
+}
+
+function saveLead(lead) {
+  try {
+    const arr = JSON.parse(localStorage.getItem("penaltyLeads") || "[]");
+    arr.push(lead);
+    localStorage.setItem("penaltyLeads", JSON.stringify(arr));
+  } catch (e) {}
+}
+
+document.getElementById("playAgain").addEventListener("click", () => {
+  document.getElementById("resultOverlay").classList.remove("show");
+  document.getElementById("playerName").value = "";
+  document.getElementById("playerEmail").value = "";
+  document.getElementById("playerPhone").value = "";
+  document.getElementById("optIn").checked = false;
+  document.getElementById("sendBtn").textContent = "Email me my score 📧";
+  resetGame();
+});
+
+/* ---------------- Shoot button ---------------- */
+els.shootBtn.addEventListener("click", () => {
+  if (state.phase === "power") shoot();
+});
+
+/* ============================================================================
+   SOUND (WebAudio, no files)
+   ============================================================================ */
+let actx = null;
+function ac() { if (!actx) actx = new (window.AudioContext||window.webkitAudioContext)(); return actx; }
+function beep(freq, dur, type="sine", vol=0.15) {
+  if (!state.sound) return;
+  try {
+    const a = ac(); const o = a.createOscillator(); const g = a.createGain();
+    o.type = type; o.frequency.value = freq; o.connect(g); g.connect(a.destination);
+    g.gain.setValueAtTime(vol, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + dur);
+    o.start(); o.stop(a.currentTime + dur);
+  } catch (e) {}
+}
+function playKick()  { beep(180, .12, "triangle", .2); }
+function playCheer() { beep(523,.1,"square",.12); setTimeout(()=>beep(659,.1,"square",.12),90); setTimeout(()=>beep(784,.18,"square",.12),180); }
+function playMiss()  { beep(200,.2,"sawtooth",.12); setTimeout(()=>beep(140,.25,"sawtooth",.12),120); }
+
+document.getElementById("soundBtn").addEventListener("click", (e) => {
+  state.sound = !state.sound;
+  e.currentTarget.textContent = state.sound ? "🔊" : "🔇";
+});
+
+/* ============================================================================
+   SETTINGS PANEL
+   ============================================================================ */
+const COLOR_FIELDS = [
+  ["primary","Primary"],["secondary","Secondary"],["accent","Accent / highlight"],
+  ["bg","Background"],["surface","Panel surface"],["text","Text"],["keeperKit","Keeper kit"]
+];
+
+function openSettings() {
+  // brand
+  document.getElementById("cfg_brandName").value = CONFIG.brand.name;
+  document.getElementById("cfg_logoUrl").value = CONFIG.brand.logoUrl.startsWith("data:") ? "" : CONFIG.brand.logoUrl;
+  document.getElementById("cfg_tagline").value = CONFIG.brand.tagline;
+  const lp = document.getElementById("logoPreview");
+  if (CONFIG.brand.logoUrl) { lp.src = CONFIG.brand.logoUrl; lp.style.display = "block"; } else lp.style.display = "none";
+  // colours
+  const wrap = document.getElementById("colorRows"); wrap.innerHTML = "";
+  COLOR_FIELDS.forEach(([key,label]) => {
+    const row = document.createElement("div"); row.className = "color-row";
+    row.innerHTML =
+      `<input type="color" data-ckey="${key}" value="${CONFIG.colors[key]}" />
+       <span class="cname">${label}</span>
+       <input type="text" class="chex field" data-chex="${key}" value="${CONFIG.colors[key]}" />`;
+    wrap.appendChild(row);
+    const picker = row.querySelector('input[type=color]');
+    const hex = row.querySelector('input[data-chex]');
+    picker.addEventListener("input", () => { hex.value = picker.value; document.documentElement.style.setProperty("--"+cssVar(key), picker.value); });
+    hex.addEventListener("input", () => { if (/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex.value)) { picker.value = hex.value; document.documentElement.style.setProperty("--"+cssVar(key), hex.value); } });
+  });
+  // promo
+  document.getElementById("cfg_promoText").value = CONFIG.promo.promoText;
+  document.getElementById("cfg_promoCode").value = CONFIG.promo.promoCode;
+  document.getElementById("cfg_ctaText").value = CONFIG.promo.ctaText;
+  document.getElementById("cfg_ctaUrl").value = CONFIG.promo.ctaUrl;
+  document.getElementById("cfg_optInText").value = CONFIG.promo.optInText;
+  // email
+  document.getElementById("cfg_ejsKey").value = CONFIG.email.publicKey;
+  document.getElementById("cfg_ejsService").value = CONFIG.email.serviceId;
+  document.getElementById("cfg_ejsTemplate").value = CONFIG.email.templateId;
+  document.getElementById("cfg_notifyEmail").value = CONFIG.email.notifyEmail;
+  // game
+  document.getElementById("cfg_numPens").value = String(CONFIG.game.numPenalties);
+  document.getElementById("cfg_difficulty").value = CONFIG.game.difficulty;
+  document.getElementById("cfg_askPhone").value = CONFIG.game.askPhone ? "yes" : "no";
+
+  document.getElementById("settingsOverlay").classList.add("show");
+}
+function cssVar(key){ return key === "keeperKit" ? "kit" : key; }
+
+let pendingLogoData = null;
+document.getElementById("cfg_logoFile").addEventListener("change", (e) => {
+  const f = e.target.files[0]; if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    pendingLogoData = reader.result;
+    const lp = document.getElementById("logoPreview");
+    lp.src = pendingLogoData; lp.style.display = "block";
+    document.getElementById("cfg_logoUrl").value = "";
+  };
+  reader.readAsDataURL(f);
+});
+
+function collectConfig() {
+  const c = deepMerge({}, CONFIG);
+  c.brand.name = document.getElementById("cfg_brandName").value.trim();
+  const urlVal = document.getElementById("cfg_logoUrl").value.trim();
+  c.brand.logoUrl = pendingLogoData || urlVal || (CONFIG.brand.logoUrl.startsWith("data:") && !urlVal ? CONFIG.brand.logoUrl : urlVal);
+  c.brand.tagline = document.getElementById("cfg_tagline").value.trim();
+  COLOR_FIELDS.forEach(([key]) => {
+    const hex = document.querySelector(`input[data-chex="${key}"]`);
+    if (hex && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex.value)) c.colors[key] = hex.value;
+  });
+  c.promo.promoText = document.getElementById("cfg_promoText").value;
+  c.promo.promoCode = document.getElementById("cfg_promoCode").value.trim();
+  c.promo.ctaText = document.getElementById("cfg_ctaText").value.trim();
+  c.promo.ctaUrl = document.getElementById("cfg_ctaUrl").value.trim();
+  c.promo.optInText = document.getElementById("cfg_optInText").value;
+  c.email.publicKey = document.getElementById("cfg_ejsKey").value.trim();
+  c.email.serviceId = document.getElementById("cfg_ejsService").value.trim();
+  c.email.templateId = document.getElementById("cfg_ejsTemplate").value.trim();
+  c.email.notifyEmail = document.getElementById("cfg_notifyEmail").value.trim();
+  c.game.numPenalties = parseInt(document.getElementById("cfg_numPens").value, 10);
+  c.game.difficulty = document.getElementById("cfg_difficulty").value;
+  c.game.askPhone = document.getElementById("cfg_askPhone").value === "yes";
+  return c;
+}
+
+document.getElementById("saveSettings").addEventListener("click", () => {
+  CONFIG = collectConfig();
+  try { localStorage.setItem(LS_KEY, JSON.stringify(CONFIG)); } catch(e) {}
+  pendingLogoData = null;
+  applyConfig();
+  resetGame();
+  document.getElementById("settingsOverlay").classList.remove("show");
+});
+
+document.getElementById("exportConfig").addEventListener("click", () => {
+  const c = collectConfig();
+  const blob = new Blob([JSON.stringify(c, null, 2)], { type: "application/json" });
+  downloadBlob(blob, "penalty-game-config.json");
+});
+
+document.getElementById("downloadGame").addEventListener("click", () => {
+  const c = collectConfig();
+  // Inject current config as the new DEFAULT_CONFIG into a copy of this page
+  const html = document.documentElement.outerHTML;
+  const injected = html.replace(
+    /const DEFAULT_CONFIG = \{[\s\S]*?\n\};/,
+    "const DEFAULT_CONFIG = " + JSON.stringify(c, null, 2) + ";"
+  );
+  const full = "<!DOCTYPE html>\n" + injected;
+  const blob = new Blob([full], { type: "text/html" });
+  downloadBlob(blob, "penalty-shootout-branded.html");
+});
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+document.getElementById("settingsBtn").addEventListener("click", openSettings);
+document.getElementById("closeSettings").addEventListener("click", () => {
+  applyConfig(); // revert live-preview colours to saved
+  document.getElementById("settingsOverlay").classList.remove("show");
+});
+document.querySelectorAll(".tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+    tab.classList.add("active");
+    document.querySelector(`.tab-panel[data-panel="${tab.dataset.tab}"]`).classList.add("active");
+  });
+});
+
+/* ============================================================================
+   INIT
+   ============================================================================ */
+applyConfig();
+resetGame();
+</script>
+</body>
+</html>
